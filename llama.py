@@ -44,7 +44,7 @@ class RMSNorm(torch.nn.Module):
             torch.Tensor: The normalized tensor.
         """
         # todo
-        raise NotImplementedError
+        return x * 1 / (torch.sqrt(x.pow(2).mean(dim=-1, keepdim=True)) + self.eps)
 
     def forward(self, x):
         """
@@ -94,7 +94,10 @@ class Attention(nn.Module):
         attention matrix before applying it to the value tensor.
         '''
         # todo
-        raise NotImplementedError
+        return torch.softmax(
+            input=query @ key.transpose(-1, -2) / math.sqrt(self.head_dim),
+            dim=-1
+        ) @ value
 
     def forward(
         self,
@@ -197,7 +200,12 @@ class LlamaLayer(nn.Module):
            output of the feed-forward network
         '''
         # todo
-        raise NotImplementedError
+        attn = self.attention_norm(x)  
+        self_attn = self.attention(attn) 
+        res_attn = x + self_attn  
+        norm_attn = self.ffn_norm(res_attn) 
+        ffn = self.feed_forward(norm_attn) 
+        return res_attn + ffn
 
 class Llama(LlamaPreTrainedModel):
     def __init__(self, config: LlamaConfig):
@@ -274,11 +282,11 @@ class Llama(LlamaPreTrainedModel):
             logits, _ = self(idx_cond)
             logits = logits[:, -1, :] # crop to just the final time step
             # todo
-            raise NotImplementedError
+
 
             if temperature == 0.0:
                 # select the single most likely index
-                idx_next = None
+                idx_next = torch.argmax(logits, dim=-1, keepdim=True)
             else:
                 '''
                 Perform temperature sampling:
@@ -289,7 +297,9 @@ class Llama(LlamaPreTrainedModel):
 
                 Note that we are not using top-k sampling/nucleus sampling in this procedure.
                 '''
-                idx_next = None
+                scale_logits = logits / temperature
+                scaled_probs = F.softmax(scale_logits, dim=-1)
+                idx_next = torch.multinomial(scaled_probs, num_samples=1)
             # append sampled index to the running sequence and continue
             idx = torch.cat((idx, idx_next), dim=1)
 
